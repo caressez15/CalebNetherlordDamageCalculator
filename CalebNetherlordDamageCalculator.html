@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>鬼王套面板排轴伤害计算器</title>
+  <!-- 引入 React 和 ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- 引入 Babel 用于在浏览器中编译 JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- 引入 Tailwind CSS 用于快速美化样式 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useMemo, useEffect } = React;
+
+    // 自定义 Hook：用于自动缓存数据到 localStorage
+    function useLocalStorage(key, initialValue) {
+      const [storedValue, setStoredValue] = useState(() => {
+        try {
+          const item = window.localStorage.getItem(key);
+          return item ? JSON.parse(item) : initialValue;
+        } catch (error) {
+          console.warn("读取缓存失败:", error);
+          return initialValue;
+        }
+      });
+
+      const setValue = (value) => {
+        try {
+          const valueToStore = value instanceof Function ? value(storedValue) : value;
+          setStoredValue(valueToStore);
+          window.localStorage.setItem(key, JSON.stringify(valueToStore));
+        } catch (error) {
+          console.warn("写入缓存失败:", error);
+        }
+      };
+      return [storedValue, setValue];
+    }
+
+    function DamageCalculator() {
+      // ==========================================
+      // 1. 默认数据定义与状态管理 (带自动缓存)
+      // ==========================================
+
+      const defaultPhases = [
+        {
+          id: 'p1', name: '非虚弱期-4花2共鸣', isWeakness: false, repeat: 2, time: 25,
+          actions: [
+            { skillId: 's2', count: 2 },
+            { skillId: 's6', count: 2 },
+            { skillId: 's5', count: 2 },
+            { skillId: 's7', count: 2 },
+            { skillId: 's9', count: 4 },
+            { skillId: 's10', count: 1 }
+          ]
+        },
+        {
+          id: 'p1774727177432', name: '虚弱期-1套相合', isWeakness: true, repeat: 1, time: 10,
+          actions: [
+            { skillId: 's11', count: 3 },
+            { skillId: 's12', count: 3 },
+            { skillId: 's14', count: 3 },
+            { skillId: 's15', count: 3 },
+            { skillId: 's2', count: 3 },
+            { skillId: 's3', count: 3 },
+            { skillId: 's4', count: 3 },
+            { skillId: 's1', count: 1 }
+          ]
+        },
+        {
+          id: 'p2', name: '虚弱期-3阶1套相合', isWeakness: true, repeat: 1, time: 10,
+          actions: [
+            { skillId: 's11', count: 3 },
+            { skillId: 's12', count: 3 },
+            { skillId: 's5', count: 3 },
+            { skillId: 's14', count: 3 },
+            { skillId: 's13', count: 3 },
+            { skillId: 's15', count: 3 },
+            { skillId: 's1', count: 1 }
+          ]
+        },
+        {
+          id: 'p1774729131246', name: '非虚弱期-1套相合', isWeakness: false, repeat: 1, time: 10,
+          actions: [
+            { skillId: 's11', count: 3 },
+            { skillId: 's12', count: 3 },
+            { skillId: 's14', count: 3 },
+            { skillId: 's15', count: 3 },
+            { skillId: 's2', count: 3 },
+            { skillId: 's3', count: 3 },
+            { skillId: 's4', count: 3 }
+          ]
+        },
+        {
+          id: 'p1774729215714', name: '非虚弱期-3阶1套相合', isWeakness: false, repeat: 1, time: 10,
+          actions: [
+            { skillId: 's11', count: 3 },
+            { skillId: 's12', count: 3 },
+            { skillId: 's5', count: 3 },
+            { skillId: 's14', count: 3 },
+            { skillId: 's13', count: 3 },
+            { skillId: 's15', count: 3 }
+          ]
+        }
+      ];
+
+      const defaultPanels = [
+        { id: 1, tier: 3, name: "顶配双爆双誓约", baseHp: 24594, panelHp: 200000, atk: 8500, cr: 97, cd: 290, weakBonus: 75, hpBonus: 0, oathBonus: 28, selectedPhaseIds: ['p1', 'p2', 'p1774729215714'] },
+        { id: 2, tier: 3, name: "顶配双爆一誓一命", baseHp: 24594, panelHp: 200000, atk: 8500, cr: 97, cd: 290, weakBonus: 75, hpBonus: 10.5, oathBonus: 14, selectedPhaseIds: ['p1', 'p2', 'p1774729215714'] },
+        { id: 3, tier: 3, name: "顶配双爆双生命", baseHp: 24594, panelHp: 200000, atk: 8500, cr: 97, cd: 290, weakBonus: 75, hpBonus: 21, oathBonus: 0, selectedPhaseIds: ['p1', 'p2', 'p1774729215714'] },
+        { id: 4, tier: 3, name: "顶配虚增双誓约", baseHp: 24594, panelHp: 260000, atk: 8500, cr: 40, cd: 190, weakBonus: 200, hpBonus: 0, oathBonus: 28, selectedPhaseIds: ['p1', 'p2', 'p1774729215714'] },
+        { id: 5, tier: 3, name: "顶配虚增一誓一命", baseHp: 24594, panelHp: 260000, atk: 8500, cr: 40, cd: 190, weakBonus: 200, hpBonus: 10.5, oathBonus: 14, selectedPhaseIds: ['p1', 'p2', 'p1774729215714'] },
+        { id: 6, tier: 3, name: "顶配虚增双生命", baseHp: 24594, panelHp: 260000, atk: 8500, cr: 40, cd: 190, weakBonus: 200, hpBonus: 21, oathBonus: 0, selectedPhaseIds: ['p1', 'p2', 'p1774729215714'] },
+        { id: 7, tier: 2, name: "高配双爆双誓约", baseHp: 22424, panelHp: 180000, atk: 7500, cr: 80, cd: 275, weakBonus: 60, hpBonus: 0, oathBonus: 28, selectedPhaseIds: ['p1', 'p1774727177432', 'p1774729131246'] },
+        { id: 8, tier: 2, name: "高配双爆一誓一命", baseHp: 22424, panelHp: 180000, atk: 7500, cr: 80, cd: 275, weakBonus: 60, hpBonus: 10.5, oathBonus: 14, selectedPhaseIds: ['p1', 'p1774727177432', 'p1774729131246'] },
+        { id: 9, tier: 2, name: "高配双爆双生命", baseHp: 22424, panelHp: 180000, atk: 7500, cr: 80, cd: 275, weakBonus: 60, hpBonus: 21, oathBonus: 0, selectedPhaseIds: ['p1', 'p1774727177432', 'p1774729131246'] },
+      ];
+
+      const defaultSkills = [
+        { id: 's1', name: '誓约技', flat: 1800, atkRatio: 960, hpRatio: 86, reqTier: 0 },
+        { id: 's2', name: '普攻a（一段）', flat: 74, atkRatio: 39, hpRatio: 2.5, reqTier: 0 },
+        { id: 's3', name: '普攻a（二段）', flat: 66, atkRatio: 34, hpRatio: 3.2, reqTier: 0 },
+        { id: 's4', name: '普攻a（三段）', flat: 135, atkRatio: 72, hpRatio: 6.5, reqTier: 0 },
+        { id: 's5', name: '重击', flat: 174, atkRatio: 93, hpRatio: 8.4, reqTier: 0 },
+        { id: 's6', name: '主动技', flat: 358, atkRatio: 190, hpRatio: 17.2, reqTier: 0 },
+        { id: 's7', name: '协助技', flat: 336, atkRatio: 179, hpRatio: 16.3, reqTier: 0 },
+        { id: 's8', name: '强协', flat: 585, atkRatio: 312, hpRatio: 28.1, reqTier: 0 },
+        { id: 's9', name: '炸莲花', flat: 491, atkRatio: 262, hpRatio: 23.6, reqTier: 0 },
+        { id: 's10', name: '共鸣技', flat: 1361, atkRatio: 725, hpRatio: 65.3, reqTier: 0 },
+        { id: 's11', name: '相合-协助技', flat: 296, atkRatio: 158, hpRatio: 14.2, reqTier: 0 },
+        { id: 's12', name: '相合-主动技', flat: 671, atkRatio: 368, hpRatio: 32.2, reqTier: 0 },
+        { id: 's13', name: '相合-莲子', flat: 327, atkRatio: 175, hpRatio: 15.7, reqTier: 3 },
+        { id: 's14', name: '相合-鬼爪', flat: 645, atkRatio: 344, hpRatio: 31, reqTier: 0 },
+        { id: 's15', name: '相合-鬼爪额外', flat: 327, atkRatio: 175, hpRatio: 15.7, reqTier: 1 },
+      ];
+
+      // 使用 v5 作为新的缓存后缀，强制覆盖老版本，加载新默认数据
+      const [phases, setPhases] = useLocalStorage('calc_phases_v5', defaultPhases);
+      const [panels, setPanels] = useLocalStorage('calc_panels_v5', defaultPanels);
+      const [skills, setSkills] = useLocalStorage('calc_skills_v5', defaultSkills);
+
+      // ==========================================
+      // 导出缓存功能
+      // ==========================================
+      const exportCacheToClipboard = () => {
+        const data = {
+          phases: JSON.parse(window.localStorage.getItem('calc_phases_v5') || '[]'),
+          panels: JSON.parse(window.localStorage.getItem('calc_panels_v5') || '[]'),
+          skills: JSON.parse(window.localStorage.getItem('calc_skills_v5') || '[]')
+        };
+        const jsonStr = JSON.stringify(data, null, 2);
+        
+        const textarea = document.createElement('textarea');
+        textarea.value = jsonStr;
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          alert('✅ 缓存数据已成功复制到剪贴板！');
+        } catch (err) {
+          alert('❌ 复制失败，请尝试按 F12 打开开发者工具手动获取 localStorage。');
+          console.error('导出数据：', jsonStr);
+        }
+        document.body.removeChild(textarea);
+      };
+
+      // ==========================================
+      // 2. 辅助更新函数区
+      // ==========================================
+      
+      const updatePanel = (id, field, value) => {
+        setPanels(panels.map(p => p.id === id ? { ...p, [field]: Number(value) || 0 } : p));
+      };
+      
+      const togglePanelPhase = (panelId, phaseId) => {
+        setPanels(panels.map(p => {
+          if (p.id !== panelId) return p;
+          const newIds = p.selectedPhaseIds.includes(phaseId)
+            ? p.selectedPhaseIds.filter(id => id !== phaseId) 
+            : [...p.selectedPhaseIds, phaseId];               
+          return { ...p, selectedPhaseIds: newIds };
+        }));
+      };
+
+      const addPanel = () => {
+        setPanels([...panels, { id: Date.now(), tier: 3, name: "新配置", baseHp: 24594, panelHp: 200000, atk: 8500, cr: 80, cd: 270, weakBonus: 150, hpBonus: 0, oathBonus: 0, selectedPhaseIds: phases.map(ph => ph.id) }]);
+      };
+
+      const duplicatePanel = (id) => {
+        const panelToCopy = panels.find(p => p.id === id);
+        if (panelToCopy) {
+          setPanels([...panels, { ...panelToCopy, id: Date.now(), name: panelToCopy.name + " (复制)" }]);
+        }
+      };
+      
+      const removePanel = (id) => {
+        setPanels(panels.filter(p => p.id !== id));
+      };
+
+      // === 面板拖拽排序逻辑 ===
+      const [draggedPanelIndex, setDraggedPanelIndex] = useState(null);
+      const handlePanelDragStart = (e, index) => {
+        setDraggedPanelIndex(index);
+        e.dataTransfer.effectAllowed = "move";
+      };
+      const handlePanelDragOver = (e) => e.preventDefault();
+      const handlePanelDrop = (e, dropIndex) => {
+        e.preventDefault();
+        if (draggedPanelIndex === null || draggedPanelIndex === dropIndex) return;
+        const newPanels = [...panels];
+        const draggedItem = newPanels[draggedPanelIndex];
+        newPanels.splice(draggedPanelIndex, 1);
+        newPanels.splice(dropIndex, 0, draggedItem);
+        setPanels(newPanels);
+        setDraggedPanelIndex(null);
+      };
+
+      // === 输出轴拖拽排序逻辑 ===
+      const [draggedPhaseIndex, setDraggedPhaseIndex] = useState(null);
+      const handlePhaseDragStart = (e, index) => {
+        setDraggedPhaseIndex(index);
+        e.dataTransfer.effectAllowed = "move";
+      };
+      const handlePhaseDragOver = (e) => e.preventDefault();
+      const handlePhaseDrop = (e, dropIndex) => {
+        e.preventDefault();
+        if (draggedPhaseIndex === null || draggedPhaseIndex === dropIndex) return;
+        const newPhases = [...phases];
+        const draggedItem = newPhases[draggedPhaseIndex];
+        newPhases.splice(draggedPhaseIndex, 1);
+        newPhases.splice(dropIndex, 0, draggedItem);
+        setPhases(newPhases);
+        setDraggedPhaseIndex(null);
+      };
+
+      const addPhase = () => {
+        const newPhaseId = 'p' + Date.now();
+        const newPhase = { id: newPhaseId, name: '新排轴', isWeakness: false, repeat: 1, time: 10, actions: [] };
+        setPhases([...phases, newPhase]);
+        setPanels(panels.map(p => ({ ...p, selectedPhaseIds: [...p.selectedPhaseIds, newPhaseId] })));
+      };
+      
+      // === 复制输出轴功能 ===
+      const duplicatePhase = (id) => {
+        const phaseToCopy = phases.find(p => p.id === id);
+        if (phaseToCopy) {
+          const newPhaseId = 'p' + Date.now();
+          // 深拷贝 actions 数组，防止引用同一内存地址
+          const newPhase = { 
+            ...phaseToCopy, 
+            id: newPhaseId, 
+            name: phaseToCopy.name + " (复制)",
+            actions: phaseToCopy.actions.map(a => ({...a})) 
+          };
+          setPhases([...phases, newPhase]);
+          // 自动将复制出来的新轴添加到 原来选中了该轴的面板 中
+          setPanels(panels.map(p => {
+            if (p.selectedPhaseIds.includes(id)) {
+              return { ...p, selectedPhaseIds: [...p.selectedPhaseIds, newPhaseId] };
+            }
+            return p;
+          }));
+        }
+      };
+
+      const removePhase = (id) => {
+        setPhases(phases.filter(p => p.id !== id));
+        setPanels(panels.map(p => ({ ...p, selectedPhaseIds: p.selectedPhaseIds.filter(pid => pid !== id) })));
+      };
+
+      const updateSkill = (id, field, value) => {
+        setSkills(skills.map(s => s.id === id ? { ...s, [field]: field === 'name' ? value : Number(value) || 0 } : s));
+      };
+
+      const addSkill = () => {
+        setSkills([...skills, { id: 's' + Date.now(), name: '新招式', flat: 0, atkRatio: 0, hpRatio: 0, reqTier: 0 }]);
+      };
+
+      const removeSkill = (id) => {
+        if (id === 's1') return; // 誓约技防删
+        setSkills(skills.filter(s => s.id !== id));
+      };
+
+      const addActionToPhase = (phaseId) => {
+        setPhases(phases.map(p => p.id === phaseId ? { ...p, actions: [...p.actions, { skillId: skills[0].id, count: 1 }] } : p));
+      };
+      const updateActionCount = (phaseId, index, count) => {
+        setPhases(phases.map(p => {
+          if (p.id !== phaseId) return p;
+          const newActions = [...p.actions];
+          newActions[index].count = Number(count) || 0;
+          return { ...p, actions: newActions };
+        }));
+      };
+      const updateActionSkill = (phaseId, index, skillId) => {
+        setPhases(phases.map(p => {
+          if (p.id !== phaseId) return p;
+          const newActions = [...p.actions];
+          newActions[index].skillId = skillId;
+          return { ...p, actions: newActions };
+        }));
+      };
+      const removeAction = (phaseId, index) => {
+        setPhases(phases.map(p => {
+          if (p.id !== phaseId) return p;
+          const newActions = [...p.actions];
+          newActions.splice(index, 1);
+          return { ...p, actions: newActions };
+        }));
+      };
+
+
+      // ==========================================
+      // 3. 核心伤害结算逻辑
+      // ==========================================
+      const results = useMemo(() => {
+        return panels.map(panel => {
+          // 【步骤 1：数值转换】
+          // 将界面上填写的整数百分比（例如填写80），除以100转换为小数（0.8）方便代码计算
+          const hpB = panel.hpBonus / 100;      
+          const cr = panel.cr / 100;            
+          const cd = panel.cd / 100;            
+          const weak = panel.weakBonus / 100;   
+          const oathB = panel.oathBonus / 100;  
+
+          // 【步骤 2：计算最终生命与暴击期望系数】
+          // 最终生命 = 面板绿字总生命 + (白字基础生命 * 芯核生命加成百分比)
+          const finalHp = panel.panelHp + (panel.baseHp * hpB);
+          
+          // 暴击期望系数 = 不暴击的概率(1-暴击率)*1 + 暴击的概率*暴击伤害
+          const critExp = (1 - cr) + (cr * cd); 
+
+          // 【步骤 3：计算虚弱期专属乘区】
+          // 顺谱虚弱基础倍率为 2.5 (即250%)，加上面板额外的虚增
+          const weakMultFavorable = 2.5 + weak; 
+          // 逆谱虚弱基础倍率为 1.5 (即150%)，加上面板额外的虚增
+          const weakMultUnfavorable = 1.5 + weak; 
+
+          let totalDmgFavorable = 0;   // 累计顺谱总伤害
+          let totalDmgUnfavorable = 0; // 累计逆谱总伤害
+          let totalTime = 0;           // 累计总耗时
+
+          // 【步骤 4：遍历该面板选中的每一个「排轴（输出循环）」】
+          const phaseDetails = panel.selectedPhaseIds.map(phaseId => {
+            const phase = phases.find(ph => ph.id === phaseId);
+            if (!phase) return null;
+
+            let phaseBaseDmgF = 0; // 当前这套轴的顺谱伤害
+            let phaseBaseDmgU = 0; // 当前这套轴的逆谱伤害
+            
+            // 【步骤 5：计算轴里面每一个「招式」的伤害】
+            phase.actions.forEach(action => {
+              const skill = skills.find(s => s.id === action.skillId);
+              if (!skill) return;
+
+              // ⚠️【阶数限制判定】如果当前面板的阶数达不到技能要求，该技能不计入伤害
+              if (panel.tier < skill.reqTier) {
+                return; // 阶数不足，跳过此技能计算
+              }
+
+              // [核心基础公式] 单次招式基础伤害 = 固定值 + (攻击力*攻击倍率) + (最终生命*生命倍率)
+              let baseSkillDmg = skill.flat + (panel.atk * (skill.atkRatio / 100)) + (finalHp * (skill.hpRatio / 100));
+              const isOathSkill = skill.id === 's1'; // 判定是否为誓约技
+
+              let hitDmgF = baseSkillDmg; // 预计的顺谱单次伤害
+              let hitDmgU = baseSkillDmg; // 预计的逆谱单次伤害
+
+              // 【步骤 6：判定各类乘区（誓约、虚弱、暴击）】
+              if (isOathSkill) {
+                // ------------------------------------
+                // 🌟 誓约技专属逻辑 
+                // ------------------------------------
+                // 1. 誓约增伤为独立乘区，直接乘上 (1 + 誓约增伤%)
+                hitDmgF = baseSkillDmg * (1 + oathB);
+                hitDmgU = baseSkillDmg * (1 + oathB);
+
+                // 2. 虚弱与暴击互斥
+                if (phase.isWeakness) {
+                  // 如果在虚弱期：只吃虚弱乘区
+                  hitDmgF *= weakMultFavorable;  
+                  hitDmgU *= weakMultUnfavorable; 
+                } else {
+                  // 如果在非虚弱期：判断阶数，只有达到满阶（3阶），才能吃到暴击期望乘区
+                  if (panel.tier >= 3) {
+                    hitDmgF *= critExp;
+                    hitDmgU *= critExp;
+                  }
+                }
+              } else {
+                // ------------------------------------
+                // ⚔️ 普通招式逻辑
+                // ------------------------------------
+                // 规则：双爆乘区与虚弱乘区同时生效
+                if (phase.isWeakness) {
+                  // 如果是虚弱期：只吃虚弱乘区，不吃暴击期望
+                  hitDmgF = baseSkillDmg * weakMultFavorable;
+                  hitDmgU = baseSkillDmg * weakMultUnfavorable;
+                } else {
+                  // 如果是非虚弱期：只吃暴击期望，不吃虚弱增伤
+                  hitDmgF = baseSkillDmg * critExp;
+                  hitDmgU = baseSkillDmg * critExp;
+                }
+              }
+
+              // 将【单次招式伤害】乘以【招式施放次数】，累加到当前排轴中
+              phaseBaseDmgF += hitDmgF * action.count;
+              phaseBaseDmgU += hitDmgU * action.count;
+            });
+
+            // 【步骤 7：结算当前排轴的重复次数】
+            const phaseFinalDmgF = phaseBaseDmgF * phase.repeat;
+            const phaseFinalDmgU = phaseBaseDmgU * phase.repeat;
+            
+            // 汇总到面板的总伤害与总耗时中
+            totalDmgFavorable += phaseFinalDmgF;
+            totalDmgUnfavorable += phaseFinalDmgU;
+            totalTime += phase.time * phase.repeat;
+
+            return { 
+              name: phase.name, 
+              dmgF: phaseFinalDmgF, 
+              dmgU: phaseFinalDmgU 
+            };
+          }).filter(Boolean); 
+
+          // 返回最终结果给表格渲染
+          return {
+            ...panel,
+            finalHp,
+            totalDmgFavorable,
+            totalDmgUnfavorable,
+            totalTime
+          };
+        });
+      }, [panels, skills, phases]);
+
+
+      // ==========================================
+      // 4. UI 渲染区
+      // ==========================================
+      return (
+        <div className="p-6 mx-auto w-full max-w-[1700px] text-gray-700">
+          
+          {/* Header */}
+          <div className="relative mb-4 text-center flex items-center justify-center">
+            <h1 className="text-3xl font-bold text-violet-800 tracking-wide">
+              鬼王套面板排轴伤害计算器
+            </h1>
+            <button 
+              onClick={exportCacheToClipboard}
+              className="absolute right-0 bg-violet-100 hover:bg-violet-200 text-violet-700 border border-violet-200 px-4 py-2 rounded-lg font-medium shadow-sm transition-all"
+            >
+              导出当前缓存
+            </button>
+          </div>
+
+          {/* ======================================= */}
+          {/* 第一部分：面板配置区 */}
+          {/* ======================================= */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-violet-100 mb-8 overflow-x-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-lg font-semibold text-violet-800 border-l-4 border-violet-500 pl-3">面板配置与排轴选择</h2>
+              <button onClick={addPanel} className="bg-emerald-500 text-white px-4 py-2 rounded shadow-sm hover:bg-emerald-600 transition text-sm">+ 新增配置</button>
+            </div>
+            <table className="w-full text-sm text-center border-collapse">
+              <thead className="bg-violet-50/50 text-violet-900 border-b border-violet-100">
+                <tr>
+                  <th className="p-3">操作</th>
+                  <th className="p-3">阶数</th>
+                  <th className="p-3">配置名称</th>
+                  <th className="p-3 text-left min-w-[180px]">生效排轴 (勾选)</th>
+                  <th className="p-3">基础生命</th>
+                  <th className="p-3">面板生命</th>
+                  <th className="p-3 font-semibold text-violet-700 bg-violet-50">结算最终生命</th>
+                  <th className="p-3">攻击</th>
+                  <th className="p-3">暴击率%</th>
+                  <th className="p-3">暴伤%</th>
+                  <th className="p-3">虚弱增伤%</th>
+                  <th className="p-3 font-semibold text-emerald-600">生命加成%</th>
+                  <th className="p-3 font-semibold text-emerald-600">誓约增伤%</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {panels.map((p, index) => (
+                  <tr 
+                    key={p.id} 
+                    className="hover:bg-violet-50/30 transition-colors bg-white cursor-move"
+                    draggable={true}
+                    onDragStart={(e) => handlePanelDragStart(e, index)}
+                    onDragOver={handlePanelDragOver}
+                    onDrop={(e) => handlePanelDrop(e, index)}
+                    title="按住整行可上下拖动排序"
+                  >
+                    <td className="p-2">
+                      <div className="flex items-center justify-center space-x-1">
+                        <span className="text-gray-400 font-bold px-1 cursor-grab" title="拖动把手">☰</span>
+                        <button onClick={() => removePanel(p.id)} className="text-red-400 hover:text-red-600 transition text-xs border border-red-200 px-2 py-1 rounded">删除</button>
+                        <button onClick={() => duplicatePanel(p.id)} className="text-emerald-500 hover:text-emerald-700 transition text-xs border border-emerald-200 px-2 py-1 rounded">复制</button>
+                      </div>
+                    </td>
+                    <td className="p-2">
+                      <select className="border border-gray-200 p-1.5 rounded outline-none focus:border-violet-400 bg-gray-50 text-violet-700 font-semibold" value={p.tier} onChange={e => updatePanel(p.id, 'tier', e.target.value)}>
+                        <option value={0}>0阶</option>
+                        <option value={1}>1阶</option>
+                        <option value={2}>2阶</option>
+                        <option value={3}>3阶</option>
+                      </select>
+                    </td>
+                    <td className="p-2"><input className="w-28 border border-gray-200 p-1.5 rounded text-center outline-none focus:border-violet-400" value={p.name} onChange={e => setPanels(panels.map(px => px.id === p.id ? {...px, name: e.target.value} : px))} /></td>
+                    <td className="p-2 text-left flex flex-wrap gap-2">
+                      {phases.map(ph => (
+                        <label key={ph.id} className="flex items-center gap-1.5 cursor-pointer bg-gray-50 border border-gray-200 px-2.5 py-1 rounded text-xs hover:bg-violet-50 transition">
+                          <input type="checkbox" className="accent-violet-500" checked={p.selectedPhaseIds.includes(ph.id)} onChange={() => togglePanelPhase(p.id, ph.id)} />
+                          {ph.name}
+                        </label>
+                      ))}
+                    </td>
+                    <td className="p-2"><input type="number" className="w-20 border border-gray-200 p-1.5 rounded text-center outline-none focus:border-violet-400" value={p.baseHp} onChange={e => updatePanel(p.id, 'baseHp', e.target.value)} /></td>
+                    <td className="p-2"><input type="number" className="w-20 border border-gray-200 p-1.5 rounded text-center outline-none focus:border-violet-400" value={p.panelHp} onChange={e => updatePanel(p.id, 'panelHp', e.target.value)} /></td>
+                    <td className="p-2 bg-violet-50/50 font-semibold text-violet-800">{(p.panelHp + p.baseHp * (p.hpBonus/100)).toLocaleString()}</td>
+                    <td className="p-2"><input type="number" className="w-14 border border-gray-200 p-1.5 rounded text-center outline-none focus:border-violet-400" value={p.atk} onChange={e => updatePanel(p.id, 'atk', e.target.value)} /></td>
+                    <td className="p-2"><input type="number" step="0.1" className="w-14 border border-gray-200 p-1.5 rounded text-center outline-none focus:border-violet-400 font-medium" value={p.cr} onChange={e => updatePanel(p.id, 'cr', e.target.value)} /></td>
+                    <td className="p-2"><input type="number" step="0.1" className="w-14 border border-gray-200 p-1.5 rounded text-center outline-none focus:border-violet-400 font-medium" value={p.cd} onChange={e => updatePanel(p.id, 'cd', e.target.value)} /></td>
+                    <td className="p-2"><input type="number" step="0.1" className="w-14 border border-gray-200 p-1.5 rounded text-center outline-none focus:border-violet-400 font-medium" value={p.weakBonus} onChange={e => updatePanel(p.id, 'weakBonus', e.target.value)} /></td>
+                    <td className="p-2"><input type="number" step="0.1" className="w-14 border border-emerald-200 bg-emerald-50/30 p-1.5 rounded text-center outline-none focus:border-emerald-400 font-semibold text-emerald-700" value={p.hpBonus} onChange={e => updatePanel(p.id, 'hpBonus', e.target.value)} /></td>
+                    <td className="p-2"><input type="number" step="0.1" className="w-14 border border-emerald-200 bg-emerald-50/30 p-1.5 rounded text-center outline-none focus:border-emerald-400 font-semibold text-emerald-700" value={p.oathBonus} onChange={e => updatePanel(p.id, 'oathBonus', e.target.value)} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* ======================================= */}
+          {/* 第二部分：最终结算展示区 */}
+          {/* ======================================= */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-emerald-100 mb-8 overflow-x-auto">
+            <h2 className="text-lg font-semibold mb-6 text-emerald-800 border-l-4 border-emerald-500 pl-3">最终伤害对比</h2>
+            <table className="w-full text-sm text-center border-collapse">
+              <thead className="bg-emerald-50/50 text-emerald-900 border-b border-emerald-100">
+                <tr>
+                  <th className="p-3">阶数</th>
+                  <th className="p-3">面板名称</th>
+                  <th className="p-3">最终结算生命</th>
+                  <th className="p-3">攻击</th>
+                  <th className="p-3">暴击率%</th>
+                  <th className="p-3">暴伤%</th>
+                  <th className="p-3">虚弱增伤%</th>
+                  <th className="p-3 text-emerald-700">顺谱总伤</th>
+                  <th className="p-3 text-violet-700">逆谱总伤</th>
+                  <th className="p-3">耗时(s)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {results.map(res => (
+                  <tr key={res.id} className="hover:bg-emerald-50/30 transition-colors">
+                    <td className="p-3 font-semibold text-violet-700 bg-violet-50/30">{res.tier}阶</td>
+                    <td className="p-3 font-medium text-left">{res.name}</td>
+                    <td className="p-3 font-mono text-gray-600">{Math.round(res.finalHp).toLocaleString()}</td>
+                    <td className="p-3 font-mono text-gray-600">{res.atk}</td>
+                    <td className="p-3 font-mono text-gray-600">{res.cr}</td>
+                    <td className="p-3 font-mono text-gray-600">{res.cd}</td>
+                    <td className="p-3 font-mono text-gray-600">{res.weakBonus}</td>
+                    <td className="p-3 font-semibold text-base font-mono text-emerald-600 bg-emerald-50/30">
+                      {Math.round(res.totalDmgFavorable).toLocaleString()}
+                    </td>
+                    <td className="p-3 font-semibold text-base font-mono text-violet-600 bg-violet-50/30">
+                      {Math.round(res.totalDmgUnfavorable).toLocaleString()}
+                    </td>
+                    <td className="p-3 font-mono text-gray-500">{res.totalTime}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="mt-4 text-sm text-gray-500">
+              * 未计入【恶鬼】伤害，仅供参考，具体以实战为准
+            </div>
+          </div>
+
+          {/* 上下分布的排轴与招式库 */}
+          <div className="flex flex-col gap-8">
+            {/* ======================================= */}
+            {/* 第三部分：排轴构建区 */}
+            {/* ======================================= */}
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+              <div className="flex justify-between items-center mb-6 border-l-4 border-gray-400 pl-3">
+                <h2 className="text-lg font-semibold text-gray-800">输出轴管理</h2>
+                <button onClick={addPhase} className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded border border-gray-200 hover:bg-gray-200 transition text-sm">+ 新增输出轴</button>
+              </div>
+              <div className="space-y-4 pr-2">
+                {phases.map((phase, pIndex) => (
+                  <div 
+                    key={phase.id} 
+                    className={`border rounded-lg p-4 transition-colors cursor-move ${phase.isWeakness ? 'bg-violet-50/50 border-violet-200' : 'bg-gray-50/50 border-gray-200'}`}
+                    draggable={true}
+                    onDragStart={(e) => handlePhaseDragStart(e, pIndex)}
+                    onDragOver={handlePhaseDragOver}
+                    onDrop={(e) => handlePhaseDrop(e, pIndex)}
+                    title="按住整块区域或菜单栏可上下拖动排序"
+                  >
+                    <div className="flex flex-wrap items-center gap-4 mb-4 text-sm border-b pb-3 border-gray-200/50">
+                      <span className="text-gray-400 font-bold px-1 cursor-grab" title="拖动把手">☰</span>
+                      <button onClick={() => removePhase(phase.id)} className="text-red-400 hover:text-red-600 transition">删除</button>
+                      <button onClick={() => duplicatePhase(phase.id)} className="text-emerald-500 hover:text-emerald-700 transition">复制</button>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500">名称</span>
+                        <input className="border border-gray-200 p-1 w-40 rounded outline-none focus:border-violet-400" value={phase.name} onChange={e => {
+                          const newPhases = [...phases]; newPhases[pIndex].name = e.target.value; setPhases(newPhases);
+                        }} />
+                      </div>
+                      <label className="flex items-center gap-1.5 cursor-pointer text-violet-700 bg-white px-3 py-1 rounded shadow-sm border border-violet-100">
+                        <input type="checkbox" className="accent-violet-500" checked={phase.isWeakness} onChange={e => {
+                          const newPhases = [...phases]; newPhases[pIndex].isWeakness = e.target.checked; setPhases(newPhases);
+                        }} />
+                        处于虚弱期
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500">耗时(s)</span>
+                        <input type="number" className="border border-gray-200 p-1 w-16 text-center rounded outline-none focus:border-violet-400" value={phase.time} onChange={e => {
+                          const newPhases = [...phases]; newPhases[pIndex].time = Number(e.target.value); setPhases(newPhases);
+                        }} />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500">重复次数</span>
+                        <input type="number" className="border border-gray-200 p-1 w-16 text-center rounded outline-none focus:border-violet-400" value={phase.repeat} onChange={e => {
+                          const newPhases = [...phases]; newPhases[pIndex].repeat = Number(e.target.value); setPhases(newPhases);
+                        }} />
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2 items-center pl-6">
+                      {phase.actions.map((action, aIndex) => (
+                        <div key={aIndex} className="flex items-center bg-white border border-gray-200 rounded-md overflow-hidden text-sm shadow-sm">
+                          <select className="border-none bg-transparent px-2 py-1.5 outline-none text-gray-700 cursor-pointer max-w-[150px]" value={action.skillId} onChange={e => updateActionSkill(phase.id, aIndex, e.target.value)}>
+                            {skills.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                          <span className="px-1 text-gray-400 text-xs bg-gray-50 h-full flex items-center">×</span>
+                          <input type="number" className="w-12 text-center py-1.5 outline-none font-mono text-gray-600 bg-gray-50" value={action.count} onChange={e => updateActionCount(phase.id, aIndex, e.target.value)} />
+                          <button className="px-2.5 py-1.5 bg-gray-50 text-gray-400 hover:bg-red-50 hover:text-red-500 border-l transition" onClick={() => removeAction(phase.id, aIndex)}>×</button>
+                        </div>
+                      ))}
+                      <button onClick={() => addActionToPhase(phase.id)} className="text-sm text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 px-3 py-1.5 rounded transition">+ 添加招式</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ======================================= */}
+            {/* 第四部分：招式倍率库区 */}
+            {/* ======================================= */}
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+              <div className="flex justify-between items-center mb-6 border-l-4 border-gray-400 pl-3">
+                <h2 className="text-lg font-semibold text-gray-800">招式倍率库</h2>
+                <button onClick={addSkill} className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded border border-gray-200 hover:bg-gray-200 transition text-sm">+ 新增招式</button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-center border-collapse">
+                  <thead className="bg-gray-50 border-b border-gray-100">
+                    <tr>
+                      <th className="p-3 text-gray-600 font-medium">操作</th>
+                      <th className="p-3 text-gray-600 font-medium text-left pl-6">招式名称</th>
+                      <th className="p-3 text-gray-600 font-medium">固定值</th>
+                      <th className="p-3 text-gray-600 font-medium">攻击倍率%</th>
+                      <th className="p-3 text-gray-600 font-medium">生命倍率%</th>
+                      <th className="p-3 text-emerald-700 font-medium">生效阶数</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {skills.map(s => (
+                      <tr key={s.id} className={`transition-colors ${s.id === 's1' ? 'bg-violet-50/50' : 'hover:bg-gray-50'}`}>
+                        <td className="p-2 w-20">
+                          {s.id !== 's1' && <button onClick={() => removeSkill(s.id)} className="text-red-400 hover:text-red-600 transition text-xs border border-red-200 px-2 py-1 rounded bg-white">删除</button>}
+                        </td>
+                        <td className="p-2 text-left pl-6">
+                          <input className={`w-40 border border-gray-200 p-1.5 rounded outline-none focus:border-violet-400 ${s.id === 's1' ? 'text-violet-700 font-bold bg-transparent border-transparent text-center' : ''}`} value={s.name} onChange={e => updateSkill(s.id, 'name', e.target.value)} disabled={s.id === 's1'} />
+                        </td>
+                        <td className="p-2"><input type="number" className="w-24 border border-gray-200 p-1.5 rounded text-center outline-none focus:border-violet-400" value={s.flat} onChange={e => updateSkill(s.id, 'flat', e.target.value)} /></td>
+                        <td className="p-2"><input type="number" step="0.1" className="w-24 border border-gray-200 p-1.5 rounded text-center outline-none focus:border-violet-400" value={s.atkRatio} onChange={e => updateSkill(s.id, 'atkRatio', e.target.value)} /></td>
+                        <td className="p-2"><input type="number" step="0.1" className="w-24 border border-gray-200 p-1.5 rounded text-center outline-none focus:border-violet-400" value={s.hpRatio} onChange={e => updateSkill(s.id, 'hpRatio', e.target.value)} /></td>
+                        <td className="p-2">
+                          <select className="border border-emerald-200 bg-emerald-50/30 p-1.5 rounded outline-none focus:border-emerald-400 text-emerald-700 font-medium" value={s.reqTier} onChange={e => updateSkill(s.id, 'reqTier', e.target.value)}>
+                            <option value={0}>通用</option>
+                            <option value={1}>1阶及以上</option>
+                            <option value={2}>2阶及以上</option>
+                            <option value={3}>仅3阶</option>
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<DamageCalculator />);
+  </script>
+</body>
+</html>
